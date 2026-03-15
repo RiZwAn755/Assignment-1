@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { fetchOrders, updateOrderStatus } from '../api';
+import { fetchOrders, updateOrderStatus, cancelOrder } from '../api';
+
 
 function OrderList() {
   const [orders, setOrders] = useState([]);
@@ -17,6 +18,19 @@ function OrderList() {
     // but the stale closure over sortField/sortDir means sorting resets
     const data = await fetchOrders();
     setOrders(data);
+  };
+
+  const handleCancelOrder = async (orderId) => {
+
+    if (window.confirm('Are you sure you want to cancel this order?')) {
+    const result = await cancelOrder(orderId);
+    if (result.error) {
+      alert(result.error);
+    } else {
+      const data = await fetchOrders();
+      setOrders(data);
+    }
+  }
   };
 
   const sortedOrders = [...orders].sort((a, b) => {
@@ -54,6 +68,7 @@ function OrderList() {
             <th onClick={() => handleSort('total_amount')} style={{ cursor: 'pointer' }}>Total</th>
             <th>Status</th>
             <th onClick={() => handleSort('created_at')} style={{ cursor: 'pointer' }}>Date</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -80,6 +95,17 @@ function OrderList() {
                 </select>
               </td>
               <td>{new Date(order.created_at).toLocaleDateString()}</td>
+              <td>
+                {['pending', 'confirmed'].includes(order.status) && (
+                  <button
+                    onClick={() => handleCancelOrder(order.id)}
+                    className="cancel-btn"
+                    style={{ color: '#ff4d4f', cursor: 'pointer', background: 'none', border: '1px solid #ff4d4f', padding: '2px 8px', borderRadius: '4px' }}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
