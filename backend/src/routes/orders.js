@@ -55,11 +55,13 @@ router.get('/:id', async (req, res) => {
 // BUG: Race condition - read inventory, then decrement separately. Two concurrent
 // requests can both read inventory=1, both pass the check, and both decrement.
 router.post('/', async (req, res) => {
-  try {
+  const client= await pool.connect();  
+  try { 
     const { customer_id, product_id, quantity, shipping_address } = req.body;
+      await client.query('BEGIN'); // start transction
 
     // Check inventory
-    const productResult = await pool.query('SELECT * FROM products WHERE id = $1', [product_id]);
+    const productResult = await client.query('SELECT * FROM products WHERE id = $1 FOR UPDATE', [product_id]);
     if (productResult.rows.length === 0) {
       return res.status(404).json({ error: 'Product not found' });
     }
@@ -73,22 +75,26 @@ router.post('/', async (req, res) => {
     const total_amount = product.price * quantity;
 
     // Create order
-    const orderResult = await pool.query(
+    const orderResult = await client.query(
       `INSERT INTO orders (customer_id, product_id, quantity, total_amount, shipping_address, status)
        VALUES ($1, $2, $3, $4, $5, 'pending') RETURNING *`,
       [customer_id, product_id, quantity, total_amount, shipping_address]
     );
 
     // Decrement inventory
-    await pool.query(
+    await client.query(
       'UPDATE products SET inventory_count = inventory_count - $1 WHERE id = $2',
       [quantity, product_id]
     );
 
+    await client.query('COMMIT'); // save
     res.json(orderResult.rows[0]);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to create order' });
-  }
+    await client.query('ROLLBACK'); // undo
+      res.status(500).json({ message: 'Failed to create order', error: err.message });
+  }finally{
+    client.release(); // client back to pool
+  } 
 });
 
 // Update order status
